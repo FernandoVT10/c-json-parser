@@ -10,44 +10,6 @@
 #define ANSI_COLOR_RESET "\x1b[0m"
 
 Lexer lexer = {0};
-    // public syntaxError(message: string, line: number, col: number | number[]): void {
-    //     const bufLine = this.getBufLine(line);
-    //
-    //     let error = "";
-    //
-    //     const spaces = (n: number): string => "".padStart(n, " ");
-    //
-    //     const colNumber = Array.isArray(col) ? col[0] : col;
-    //     // filepath:line
-    //     error += formatString(ANSIColor.RED, `${this.filePath}:${line}:${colNumber}`) + "\n";
-    //
-    //     // ERROR: message
-    //     error += `${formatString(ANSIColor.RED, "ERROR:")} ${message}\n`;
-    //
-    //     let errorStart: number, errorEnd: number;
-    //
-    //     if(Array.isArray(col)) {
-    //         errorStart = col[0] - 1;
-    //         errorEnd = col[1] - 1;
-    //     } else {
-    //         errorStart = col - 1;
-    //         errorEnd = col;
-    //     }
-    //
-    //     // the line of code where the error is
-    //     const left = bufLine.slice(0, errorStart);
-    //     const highlightedCode = formatString(ANSIColor.RED, bufLine.slice(errorStart, errorEnd));
-    //     const right = bufLine.slice(errorEnd);
-    //     error += `${spaces(4)}${line} |${left}${highlightedCode}${right}\n`;
-    //
-    //     // A mark pointing the exact place where the error was found
-    //     const lineLen = line.toString().length;
-    //     const errorMark = "^".padEnd(errorEnd - errorStart, "~");
-    //     error += `${spaces(4 + lineLen)} |${spaces(errorStart)}${formatString(ANSIColor.RED, errorMark)}`;
-    //
-    //     this.logger.error(error);
-    //     this.hadErrors = true;
-    // }
 
 typedef enum {
     ANSI_RED,
@@ -69,13 +31,12 @@ void print_slice_colored(const char *text, int start, int end, AnsiColor color) 
     }
 }
 
-int *get_buf_line_pos() {
+int *get_buf_line_pos(int line) {
     static int buf_line[2];
     buf_line[0] = 0;
     buf_line[1] = 0;
 
     int x = 0;
-    int line = lexer.line;
     while(line > 1 && x < strlen(lexer.buffer)) {
         if(lexer.buffer[x] == '\n') line--;
         buf_line[0]++;
@@ -90,18 +51,49 @@ int *get_buf_line_pos() {
     return buf_line;
 }
 
+#define TAB "    "
+
 void lexer_error(const char *message) {
     // TODO: do a better error logging
     fprintf(stderr, ANSI_COLOR_RED "Json Parser Error:" ANSI_COLOR_RESET);
     fprintf(stderr, " %s at line %d column %d\n", message, lexer.line, lexer.col);
 
-    int *line_pos = get_buf_line_pos();
-    printf("    %d |", lexer.line);
+    int *line_pos = get_buf_line_pos(lexer.line);
+    printf(TAB"%d |", lexer.line);
     print_slice(lexer.buffer, line_pos[0], line_pos[0] + 10);
     print_slice_colored(lexer.buffer, line_pos[0] + 10, line_pos[0] + 16, ANSI_RED);
     print_slice(lexer.buffer, line_pos[0] + 16, line_pos[1]);
     putchar('\n');
     printf("      |          " ANSI_COLOR_RED "^~~~~~" ANSI_COLOR_RESET "\n");
+
+    lexer.had_errors = true;
+}
+
+void lexer_range_error(const char *message, int start_col, int end_col, int line) {
+    fprintf(stderr, ANSI_COLOR_RED "Json Parser Error:" ANSI_COLOR_RESET);
+    fprintf(stderr, " %s at line %d column %d\n", message, line, start_col);
+    fprintf(stderr, TAB "%d |", line);
+
+    int *buf_pos = get_buf_line_pos(lexer.line);
+    print_slice(lexer.buffer, buf_pos[0], buf_pos[0] + start_col);
+    print_slice_colored(lexer.buffer, buf_pos[0] + start_col, buf_pos[0] + end_col, ANSI_RED);
+    print_slice(lexer.buffer, buf_pos[0] + end_col, buf_pos[1]);
+    putchar('\n');
+    printf(TAB);
+    for(int i = 0; i < line / 10 + 2; i++) {
+        putchar(' ');
+    }
+    putchar('|');
+    for(int i = 0; i < start_col; i++) {
+        putchar(' ');
+    }
+    printf(ANSI_COLOR_RED);
+    putchar('^');
+    for(int i = 0; i < end_col - start_col - 1; i++) {
+        putchar('~');
+    }
+    printf(ANSI_COLOR_RESET);
+    putchar('\n');
 
     lexer.had_errors = true;
 }
@@ -140,13 +132,14 @@ void lexer_add_tkn(TokenType type, char *lexeme) {
 }
 
 void lexer_string() {
+    int start_col = lexer.col - 1;
     String str = {0};
     while(!lexer_is_at_end() && lexer_peek() != '"' && lexer_peek() != '\n') {
         string_append_chr(&str, lexer_advance());
     }
 
     if(!lexer_match('"')) {
-        lexer_error("Expected terminating \"");
+        lexer_range_error("Expected terminating \"", start_col, lexer.col, lexer.line);
         goto end;
     }
 
@@ -167,7 +160,7 @@ void lexer_number(char c) {
         string_append_chr(&number, '.');
 
         if(!isdigit(lexer_peek())) {
-            lexer_error("Expected digit");
+            lexer_range_error("Expected digit after \".\"", lexer.col - 1, lexer.col, lexer.line);
             goto end;
         }
 
@@ -180,7 +173,7 @@ void lexer_number(char c) {
         string_append_chr(&number, 'e');
 
         if(!isdigit(lexer_peek())) {
-            lexer_error("Expected digit");
+            lexer_range_error("Expected digit after \"e\"", lexer.col - 1, lexer.col, lexer.line);
             goto end;
         }
 
@@ -195,6 +188,7 @@ end:
 }
 
 void lexer_keyword(char c) {
+    int start_col = lexer.col - 1;
     String str = {0};
     string_append_chr(&str, c);
     while(!lexer_is_at_end() && isalpha(lexer_peek())) {
@@ -209,7 +203,8 @@ void lexer_keyword(char c) {
         lexer_add_tkn(NULL_TKN, NULL);
     } else {
         char *keyword = string_dump(&str);
-        lexer_error(text_format("Unknown keyword \"%s\"", keyword));
+        const char *message = text_format("Unknown keyword \"%s\"", keyword);
+        lexer_range_error(message, start_col, lexer.col, lexer.line);
         free(keyword);
     }
 
@@ -255,7 +250,8 @@ Tokens lexer_scan() {
                 } else if(isdigit(c)) {
                     lexer_number(c);
                 } else {
-                    lexer_error(text_format("Unexpected character \"%c\"", c));
+                    const char *msg = text_format("Unexpected character \"%c\"", c);
+                    lexer_range_error(msg, lexer.col - 1, lexer.col, lexer.line);
                 }
             }
         }
