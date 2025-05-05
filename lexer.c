@@ -6,6 +6,9 @@
 #include "cTooling.h"
 #include "lexer.h"
 
+#define ANSI_COLOR_RED "\x1b[31m"
+#define ANSI_COLOR_RESET "\x1b[0m"
+
 Lexer lexer = {0};
     // public syntaxError(message: string, line: number, col: number | number[]): void {
     //     const bufLine = this.getBufLine(line);
@@ -46,11 +49,60 @@ Lexer lexer = {0};
     //     this.hadErrors = true;
     // }
 
-void lexer_error(const char *message) {
-    char *buf_line
+typedef enum {
+    ANSI_RED,
+} AnsiColor;
 
+void print_slice(const char *text, int start, int end) {
+    for(size_t i = start; i < end; i++) {
+        putchar(text[i]);
+    }
+}
+
+void print_slice_colored(const char *text, int start, int end, AnsiColor color) {
+    switch(color) {
+        case ANSI_RED:
+            printf(ANSI_COLOR_RED);
+            print_slice(text, start, end);
+            printf(ANSI_COLOR_RESET);
+        break;
+    }
+}
+
+int *get_buf_line_pos() {
+    static int buf_line[2];
+    buf_line[0] = 0;
+    buf_line[1] = 0;
+
+    int x = 0;
+    int line = lexer.line;
+    while(line > 1 && x < strlen(lexer.buffer)) {
+        if(lexer.buffer[x] == '\n') line--;
+        buf_line[0]++;
+        x++;
+    }
+
+    buf_line[1] = buf_line[0];
+    while(buf_line[1] < strlen(lexer.buffer) && lexer.buffer[buf_line[1]] != '\n') {
+        buf_line[1]++;
+    }
+
+    return buf_line;
+}
+
+void lexer_error(const char *message) {
     // TODO: do a better error logging
-    fprintf(stderr, "Json Parser: %s at line %d column %d\n", message, lexer.line, lexer.col);
+    fprintf(stderr, ANSI_COLOR_RED "Json Parser Error:" ANSI_COLOR_RESET);
+    fprintf(stderr, " %s at line %d column %d\n", message, lexer.line, lexer.col);
+
+    int *line_pos = get_buf_line_pos();
+    printf("    %d |", lexer.line);
+    print_slice(lexer.buffer, line_pos[0], line_pos[0] + 10);
+    print_slice_colored(lexer.buffer, line_pos[0] + 10, line_pos[0] + 16, ANSI_RED);
+    print_slice(lexer.buffer, line_pos[0] + 16, line_pos[1]);
+    putchar('\n');
+    printf("      |          " ANSI_COLOR_RED "^~~~~~" ANSI_COLOR_RESET "\n");
+
     lexer.had_errors = true;
 }
 
