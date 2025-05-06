@@ -15,18 +15,18 @@ typedef enum {
     ANSI_RED,
 } AnsiColor;
 
-void print_slice(const char *text, int start, int end) {
+void print_slice(FILE *stream, const char *text, int start, int end) {
     for(size_t i = start; i < end; i++) {
-        putchar(text[i]);
+        putc(text[i], stream);
     }
 }
 
-void print_slice_colored(const char *text, int start, int end, AnsiColor color) {
+void print_slice_colored(FILE *stream, const char *text, int start, int end, AnsiColor color) {
     switch(color) {
         case ANSI_RED:
-            printf(ANSI_COLOR_RED);
-            print_slice(text, start, end);
-            printf(ANSI_COLOR_RESET);
+            fprintf(stream, ANSI_COLOR_RED);
+            print_slice(stream, text, start, end);
+            fprintf(stream, ANSI_COLOR_RESET);
         break;
     }
 }
@@ -53,47 +53,39 @@ int *get_buf_line_pos(int line) {
 
 #define TAB "    "
 
-void lexer_error(const char *message) {
-    // TODO: do a better error logging
-    fprintf(stderr, ANSI_COLOR_RED "Json Parser Error:" ANSI_COLOR_RESET);
-    fprintf(stderr, " %s at line %d column %d\n", message, lexer.line, lexer.col);
-
-    int *line_pos = get_buf_line_pos(lexer.line);
-    printf(TAB"%d |", lexer.line);
-    print_slice(lexer.buffer, line_pos[0], line_pos[0] + 10);
-    print_slice_colored(lexer.buffer, line_pos[0] + 10, line_pos[0] + 16, ANSI_RED);
-    print_slice(lexer.buffer, line_pos[0] + 16, line_pos[1]);
-    putchar('\n');
-    printf("      |          " ANSI_COLOR_RED "^~~~~~" ANSI_COLOR_RESET "\n");
-
-    lexer.had_errors = true;
-}
-
 void lexer_range_error(const char *message, int start_col, int end_col, int line) {
     fprintf(stderr, ANSI_COLOR_RED "Json Parser Error:" ANSI_COLOR_RESET);
     fprintf(stderr, " %s at line %d column %d\n", message, line, start_col);
-    fprintf(stderr, TAB "%d |", line);
+    fprintf(stderr, "%*c%d |", 4, ' ', line);
 
     int *buf_pos = get_buf_line_pos(lexer.line);
-    print_slice(lexer.buffer, buf_pos[0], buf_pos[0] + start_col);
-    print_slice_colored(lexer.buffer, buf_pos[0] + start_col, buf_pos[0] + end_col, ANSI_RED);
-    print_slice(lexer.buffer, buf_pos[0] + end_col, buf_pos[1]);
-    putchar('\n');
-    printf(TAB);
-    for(int i = 0; i < line / 10 + 2; i++) {
-        putchar(' ');
-    }
-    putchar('|');
-    for(int i = 0; i < start_col; i++) {
-        putchar(' ');
-    }
-    printf(ANSI_COLOR_RED);
-    putchar('^');
+    // print from start to where the highligted code is
+    print_slice(stderr, lexer.buffer, buf_pos[0], buf_pos[0] + start_col);
+    // print the highligted code
+    print_slice_colored(
+        stderr,
+        lexer.buffer,
+        buf_pos[0] + start_col,
+        buf_pos[0] + end_col,
+        ANSI_RED
+    );
+    // print the right side after the highligted code
+    print_slice(stderr, lexer.buffer, buf_pos[0] + end_col, buf_pos[1]);
+    // add a new line at the end
+    putc('\n', stderr);
+
+    // error mark
+    int line_chr_len = line / 10;
+    int padding = 6;
+    // spaces before the | 
+    fprintf(stderr, "%*c|", line_chr_len + padding, ' ');
+    fprintf(stderr, "%*c" ANSI_COLOR_RED "^", start_col, ' ');
+
     for(int i = 0; i < end_col - start_col - 1; i++) {
-        putchar('~');
+        putc('~', stderr);
     }
-    printf(ANSI_COLOR_RESET);
-    putchar('\n');
+
+    fprintf(stderr, ANSI_COLOR_RESET "\n");
 
     lexer.had_errors = true;
 }
@@ -151,6 +143,11 @@ end:
 void lexer_number(char c) {
     String number = {0};
     string_append_chr(&number, c);
+
+    if(c == '-' && !isdigit(lexer_peek())) {
+        lexer_range_error("Expected digit after \"-\"", lexer.col - 1, lexer.col, lexer.line);
+        goto end;
+    }
 
     while(!lexer_is_at_end() && isdigit(lexer_peek())) {
         string_append_chr(&number, lexer_advance());
@@ -247,7 +244,7 @@ Tokens lexer_scan() {
             default: {
                 if(isalpha(c)) {
                     lexer_keyword(c);
-                } else if(isdigit(c)) {
+                } else if(isdigit(c) || c == '-') {
                     lexer_number(c);
                 } else {
                     const char *msg = text_format("Unexpected character \"%c\"", c);

@@ -7,6 +7,8 @@
 typedef struct {
     Tokens tokens;
     size_t cursor;
+
+    bool had_errors;
 } Parser;
 
 JsonObject *json_parse(Tokens tokens);

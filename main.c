@@ -43,6 +43,9 @@ int main() {
         return 1;
     }
     JsonObject *obj = json_parse(tokens);
+    if(obj == NULL) {
+        return 1;
+    }
     json_object_print(obj, 0);
 
     return 0;

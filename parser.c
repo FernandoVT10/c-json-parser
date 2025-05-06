@@ -163,6 +163,7 @@ JsonObject *parser_object(bool test_first_brace) {
         } else {
             if(!parser_match_tkn(COMMA_TKN)) {
                 printf("[ERROR] Expected \",\"\n");
+                parser.had_errors = true;
                 break;
             }
 
@@ -182,6 +183,10 @@ JsonObject *json_parse(Tokens tokens) {
     parser.cursor = 0;
 
     JsonObject *obj = parser_object(true);
+
+    if(parser.had_errors) {
+        return NULL;
+    }
 
     return obj;
 }
