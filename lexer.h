@@ -16,6 +16,7 @@ typedef enum {
 typedef struct {
     TokenType type;
     char *lexeme;
+
     int start_col;
     int end_col;
     int line;
@@ -28,11 +29,15 @@ typedef struct {
 } Tokens;
 
 typedef struct {
-    size_t cursor;
+    int cur_start; // cursor start
+    int cur_current; // cursor current
+
     char *buffer;
     int line;
-    int start_col;
-    int cur_col;
+
+    // these keep track the start and end column of a token
+    int col_start;
+    int col_current;
 
     Tokens tokens;
     bool had_errors;
@@ -41,5 +46,6 @@ typedef struct {
 void lexer_init(char *buffer);
 Tokens lexer_scan();
 bool lexer_had_errors();
+void lexer_cleanup();
 
 #endif // LEXER_H

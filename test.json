@@ -4,7 +4,7 @@
     "v3": false,
     "v4": true,
     "v5": null,
-    "v6": [1, 2, [false, true], "bye bitches!",  "$-%bruh": "bruh" }],
+    "v6": [1, 2, [false, true], "bye bitches!",  { "$-%bruh": "bruh" }],
     "v7": {
         "v7_1": "YEAH!"
     },

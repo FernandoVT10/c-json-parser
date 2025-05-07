@@ -46,6 +46,7 @@ int main() {
     if(obj == NULL) {
         return 1;
     }
+    lexer_cleanup();
     json_object_print(obj, 0);
 
     return 0;

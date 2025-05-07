@@ -8,15 +8,6 @@
 JsonArray *parser_array();
 JsonObject *parser_object(bool test_first_brace);
 
-// FORMAL GRAMMAR
-// Object => "{" (ObjectItem ("," ObjectItem)*)? "}"
-// ObjectItem => Key ":" Value
-// Key => '"' [0-9A-Za-z]+ '"'
-// Value => "false" | "true" | "null" | Number | String | Array | Object
-// Number => [0-9]+
-// String => '"' [0-9A-Za-z]* '"'
-// Array => "[" (Value ("," Value)*)? "]"
-
 Parser parser = {0};
 
 bool parser_is_at_end() {
