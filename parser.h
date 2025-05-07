@@ -9,8 +9,9 @@ typedef struct {
     size_t cursor;
 
     bool had_errors;
+    const char *buffer;
 } Parser;
 
-JsonObject *json_parse(Tokens tokens);
+JsonObject *json_parse(Tokens tokens, const char *buffer);
 
 #endif

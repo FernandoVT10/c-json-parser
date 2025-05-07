@@ -42,7 +42,7 @@ int main() {
     if(lexer_had_errors()) {
         return 1;
     }
-    JsonObject *obj = json_parse(tokens);
+    JsonObject *obj = json_parse(tokens, buffer);
     if(obj == NULL) {
         return 1;
     }

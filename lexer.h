@@ -16,6 +16,9 @@ typedef enum {
 typedef struct {
     TokenType type;
     char *lexeme;
+    int start_col;
+    int end_col;
+    int line;
 } Token;
 
 typedef struct {
@@ -28,7 +31,8 @@ typedef struct {
     size_t cursor;
     char *buffer;
     int line;
-    int col;
+    int start_col;
+    int cur_col;
 
     Tokens tokens;
     bool had_errors;

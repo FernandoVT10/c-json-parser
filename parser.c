@@ -3,6 +3,7 @@
 #include <string.h>
 
 #include "parser.h"
+#include "utils.h"
 
 JsonArray *parser_array();
 JsonObject *parser_object(bool test_first_brace);
@@ -58,6 +59,11 @@ bool parser_match_tkn(TokenType type) {
 bool parser_is_next_tkn(TokenType type) {
     Token *t = parser_peek_tkn();
     return t != NULL && t->type == type;
+}
+
+void parser_error(const char *message, Token *token) {
+    syntax_error(parser.buffer, message, token->start_col, token->end_col, token->line);
+    parser.had_errors = true;
 }
 
 bool parser_value(JsonValue *value) {
@@ -152,7 +158,16 @@ JsonObject *parser_object(bool test_first_brace) {
     JsonObject *obj = json_object_new();
 
     if(test_first_brace && !parser_match_tkn(OPEN_BRACE_TKN)) {
-        printf("[ERROR] Expected \"{\"\n");
+        Token *prev_tkn = parser_prev_tkn();
+
+        if(prev_tkn == NULL) {
+            syntax_error(parser.buffer, "Expected starting \"{\"", 0, 0, 0);
+            parser.had_errors = true;
+        } else {
+            parser_error("Expected opening \"{\" after \":\"", prev_tkn);
+        }
+
+        return NULL;
     }
 
     bool first = true;
@@ -162,8 +177,7 @@ JsonObject *parser_object(bool test_first_brace) {
             first = false;
         } else {
             if(!parser_match_tkn(COMMA_TKN)) {
-                printf("[ERROR] Expected \",\"\n");
-                parser.had_errors = true;
+                parser_error("Expected \",\" after value", parser_prev_tkn());
                 break;
             }
 
@@ -172,15 +186,17 @@ JsonObject *parser_object(bool test_first_brace) {
     }
 
     if(!parser_match_tkn(CLOSE_BRACE_TKN)) {
-        printf("[ERROR] Expected \"}\"\n");
+        parser_error("Expected closing \"}\"", parser_prev_tkn());
+        return NULL;
     }
 
     return obj;
 }
 
-JsonObject *json_parse(Tokens tokens) {
+JsonObject *json_parse(Tokens tokens, const char *buffer) {
     parser.tokens = tokens;
     parser.cursor = 0;
+    parser.buffer = buffer;
 
     JsonObject *obj = parser_object(true);
 
