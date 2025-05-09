@@ -12,6 +12,6 @@ typedef struct {
     const char *buffer;
 } Parser;
 
-JsonObject *json_parse(Tokens tokens, const char *buffer);
+JsonObject *json_parse(char *buffer);
 
 #endif

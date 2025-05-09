@@ -5,7 +5,7 @@
 
 #include "cTooling.h"
 #include "lexer.h"
-#include "utils.h"
+#include "error.h"
 
 Lexer lexer = {0};
 
@@ -15,20 +15,20 @@ void lexer_init(char *buffer) {
     lexer.buffer = buffer;
 }
 
-bool lexer_is_at_end() {
+static bool lexer_is_at_end() {
     return lexer.cur_current >= strlen(lexer.buffer);
 }
 
-char lexer_advance() {
+static char lexer_advance() {
     lexer.col_current++;
     return lexer.buffer[lexer.cur_current++];
 }
 
-char lexer_peek() {
+static char lexer_peek() {
     return lexer.buffer[lexer.cur_current];
 }
 
-bool lexer_match(char c) {
+static bool lexer_match(char c) {
     if(lexer_peek() == c) {
         lexer_advance();
         return true;
@@ -37,7 +37,7 @@ bool lexer_match(char c) {
     return false;
 }
 
-void lexer_add_tkn(TokenType type, char *lexeme) {
+static void lexer_add_tkn(TokenType type, char *lexeme) {
     Token token = {
         .type = type,
         .lexeme = lexeme,
@@ -50,12 +50,12 @@ void lexer_add_tkn(TokenType type, char *lexeme) {
     da_append(&lexer.tokens, token);
 }
 
-void lexer_error(const char *message, int start_col, int end_col, int line) {
+static void lexer_error(const char *message, int start_col, int end_col, int line) {
     syntax_error(lexer.buffer, message, start_col, end_col, line);
     lexer.had_errors = true;
 }
 
-void lexer_string() {
+static void lexer_string() {
     while(!lexer_is_at_end() && lexer_peek() != '"' && lexer_peek() != '\n') {
         lexer_advance();
     }
@@ -74,7 +74,7 @@ void lexer_string() {
     lexer_add_tkn(STRING_TKN, str);
 }
 
-void lexer_number(char c) {
+static void lexer_number(char c) {
     if(c == '-' && !isdigit(lexer_peek())) {
         lexer_error("Expected digit after \"-\"", lexer.col_current - 1, lexer.col_current, lexer.line);
         return;
@@ -110,7 +110,7 @@ void lexer_number(char c) {
     lexer_add_tkn(NUMBER_TKN, number);
 }
 
-void lexer_keyword(char c) {
+static void lexer_keyword(char c) {
     while(!lexer_is_at_end() && isalpha(lexer_peek())) {
         lexer_advance();
     }

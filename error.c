@@ -1,7 +1,7 @@
 #include <stdio.h>
 #include <string.h>
 
-#include "utils.h"
+#include "error.h"
 
 #define ANSI_COLOR_RED "\x1b[31m"
 #define ANSI_COLOR_RESET "\x1b[0m"
@@ -11,6 +11,10 @@ typedef enum {
 } AnsiColor;
 
 void print_slice(FILE *stream, const char *text, int start, int end) {
+    if(start < 0) start = 0;
+
+    size_t len = strlen(text);
+    if(end > len) end = len - 1;
     for(size_t i = start; i < end; i++) {
         putc(text[i], stream);
     }
@@ -22,7 +26,7 @@ void print_slice_colored(FILE *stream, const char *text, int start, int end, Ans
             fprintf(stream, ANSI_COLOR_RED);
             print_slice(stream, text, start, end);
             fprintf(stream, ANSI_COLOR_RESET);
-        break;
+            break;
     }
 }
 

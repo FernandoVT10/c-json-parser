@@ -3,53 +3,57 @@
 #include <string.h>
 
 #include "parser.h"
-#include "utils.h"
+#include "error.h"
+#include "cTooling.h"
 
-JsonArray *parser_array();
-JsonObject *parser_object(bool test_first_brace);
+static JsonArray *parse_array();
+static JsonObject *parse_object();
 
 Parser parser = {0};
 
-bool parser_is_at_end() {
+static bool is_at_end() {
     return parser.cursor >= parser.tokens.count;
 }
 
-Token *parser_get_tkn(size_t pos) {
-    if(pos >= parser.tokens.count) {
+static Token *get_tkn(int pos) {
+    if(pos < 0 || pos >= parser.tokens.count) {
         return NULL;
     }
 
     return &parser.tokens.items[pos];
 }
 
-Token *parser_consume_tkn() {
-    return parser_get_tkn(parser.cursor++);
+static Token *consume_tkn() {
+    return get_tkn(parser.cursor++);
 }
 
-Token *parser_peek_tkn() {
-    return parser_get_tkn(parser.cursor);
+static Token *peek_tkn() {
+    return get_tkn(parser.cursor);
 }
 
-Token *parser_prev_tkn() {
-    if(parser.cursor > 0) {
-        return parser_get_tkn(parser.cursor - 1);
-    }
-
-    return NULL;
+static Token *prev_tkn() {
+    return get_tkn(parser.cursor - 1);
 }
 
-bool parser_match_tkn(TokenType type) {
-    Token *token = parser_peek_tkn();
+static bool match_tkn(TokenType type) {
+    Token *token = peek_tkn();
     if(token != NULL && token->type == type) {
-        parser_consume_tkn();
+        consume_tkn();
         return true;
     }
 
     return false;
 }
-bool parser_is_next_tkn(TokenType type) {
-    Token *t = parser_peek_tkn();
+
+static bool is_next_tkn(TokenType type) {
+    Token *t = peek_tkn();
     return t != NULL && t->type == type;
+}
+
+static void rewind_tkn() {
+    if(parser.cursor > 0) {
+        parser.cursor--;
+    }
 }
 
 void parser_error(const char *message, Token *token) {
@@ -57,8 +61,8 @@ void parser_error(const char *message, Token *token) {
     parser.had_errors = true;
 }
 
-bool parser_value(JsonValue *value) {
-    Token *t = parser_consume_tkn();
+static bool parse_value(JsonValue *value) {
+    Token *t = consume_tkn();
 
     switch(t->type) {
         case STRING_TKN:
@@ -83,113 +87,158 @@ bool parser_value(JsonValue *value) {
             break;
         case OPEN_BRACKET_TKN:
             value->type = JSON_ARRAY;
-            value->ptr = parser_array();
+            value->ptr = parse_array();
             break;
         case OPEN_BRACE_TKN:
             value->type = JSON_OBJECT;
-            value->ptr = parser_object(false);
+            value->ptr = parse_object(false);
             break;
         default:
-            printf("[ERROR] Expected value\n");
+            rewind_tkn();
             return false;
     }
 
     return true;
 }
 
-JsonArray *parser_array() {
+static JsonArray *parse_array() {
     JsonArray *arr = json_array_new();
 
     bool first = true;
-    while(!parser_is_at_end() && !parser_is_next_tkn(CLOSE_BRACKET_TKN)) {
+    while(!is_at_end() && !is_next_tkn(CLOSE_BRACKET_TKN)) {
         JsonValue value = {0};
 
         if(first) {
-            if(!parser_value(&value)) break;
+            if(!parse_value(&value)) break;
             first = false;
         } else {
-            if(!parser_match_tkn(COMMA_TKN)) {
+            if(!match_tkn(COMMA_TKN)) {
                 printf("[ERROR] Expected \",\"\n");
                 break;
             }
 
-            if(!parser_value(&value)) break;
+            if(!parse_value(&value)) break;
         }
 
         json_array_push(arr, value);
     }
 
-    if(!parser_match_tkn(CLOSE_BRACKET_TKN)) {
+    if(!match_tkn(CLOSE_BRACKET_TKN)) {
         printf("[ERROR] Expected \"]\"\n");
     }
 
     return arr;
 }
 
-void parser_object_item(JsonObject *obj) {
-    if(!parser_is_next_tkn(STRING_TKN)) {
-        printf("[ERROR] Expected key\n");
+static void parse_object_item(JsonObject *obj) {
+    if(!is_next_tkn(STRING_TKN)) {
+        parser_error("Expected key", peek_tkn());
         return;
     }
 
-    Token *key = parser_consume_tkn();
+    Token *key = consume_tkn();
 
-    if(!parser_match_tkn(COLON_TKN)) {
+    if(!match_tkn(COLON_TKN)) {
         printf("[ERROR] Expected \":\"\n");
         return;
     }
 
     JsonValue value = {0};
-    if(parser_value(&value)) {
+    if(parse_value(&value)) {
         json_object_set(obj, key->lexeme, value);
+    } else {
+        parser_error("Expected value after \":\"", prev_tkn());
     }
 }
 
-JsonObject *parser_object(bool test_first_brace) {
+static JsonObject *parse_object() {
     JsonObject *obj = json_object_new();
 
-    if(test_first_brace && !parser_match_tkn(OPEN_BRACE_TKN)) {
-        Token *prev_tkn = parser_prev_tkn();
-
-        if(prev_tkn == NULL) {
-            syntax_error(parser.buffer, "Expected starting \"{\"", 0, 0, 0);
-            parser.had_errors = true;
-        } else {
-            parser_error("Expected opening \"{\" after \":\"", prev_tkn);
-        }
-
-        return NULL;
-    }
+    // if(test_first_brace && !match_tkn(OPEN_BRACE_TKN)) {
+    //     Token *prev_tkn = prev_tkn();
+    //
+    //     if(prev_tkn == NULL) {
+    //         syntax_error(parser.buffer, "Expected starting \"{\"", 0, 0, 0);
+    //         parser.had_errors = true;
+    //     } else {
+    //         parser_error("Expected opening \"{\" after \":\"", prev_tkn);
+    //     }
+    //
+    //     return NULL;
+    // }
 
     bool first = true;
-    while(!parser_is_next_tkn(CLOSE_BRACE_TKN) && !parser_is_at_end()) {
+    while(!is_next_tkn(CLOSE_BRACE_TKN) && !is_at_end()) {
         if(first) {
-            parser_object_item(obj);
+            parse_object_item(obj);
             first = false;
         } else {
-            if(!parser_match_tkn(COMMA_TKN)) {
-                parser_error("Expected \",\" after value", parser_prev_tkn());
-                break;
+            if(!match_tkn(COMMA_TKN)) {
+                char *abc;
+
+                switch(peek_tkn()->type) {
+                    case STRING_TKN: abc = "string"; break;
+                    case NUMBER_TKN: abc = "number"; break;
+                    case FALSE_TKN: abc = "false"; break;
+                    case TRUE_TKN: abc = "true"; break;
+                    case NULL_TKN: abc = "null"; break;
+                    case OPEN_BRACE_TKN: abc = "\"{\""; break;
+                    case CLOSE_BRACE_TKN: abc = "\"}\""; break;
+                    case OPEN_BRACKET_TKN: abc = "\"[\""; break;
+                    case CLOSE_BRACKET_TKN: abc = "\"]\""; break;
+                    case COLON_TKN: abc = "\":\""; break;
+                    case COMMA_TKN: abc = "\",\""; break;
+                }
+
+                const char *error = text_format("Expected \",\" after value but got %s", abc);
+                parser_error(error, peek_tkn());
+
+                while(!is_at_end() && !is_next_tkn(STRING_TKN)) {
+                    consume_tkn();
+                }
             }
 
-            parser_object_item(obj);
+            parse_object_item(obj);
         }
     }
 
-    if(!parser_match_tkn(CLOSE_BRACE_TKN)) {
-        parser_error("Expected closing \"}\"", parser_prev_tkn());
+    if(!match_tkn(CLOSE_BRACE_TKN)) {
+        if(is_at_end()) {
+            parser_error("Expected \"}\" at the end of the file", prev_tkn());
+        } else {
+            // TODO
+            parser_error("Expected \"}\" but got s", prev_tkn());
+        }
         return NULL;
     }
 
     return obj;
 }
 
-JsonObject *json_parse(Tokens tokens, const char *buffer) {
-    parser.tokens = tokens;
+JsonObject *json_parse(char *buffer) {
+    lexer_init(buffer);
+    parser.tokens = lexer_scan();
+    if(lexer_had_errors()) {
+        return NULL;
+    }
+
     parser.cursor = 0;
     parser.buffer = buffer;
 
-    JsonObject *obj = parser_object(true);
+    if(!match_tkn(OPEN_BRACE_TKN)) {
+        if(is_at_end()) {
+            syntax_error(parser.buffer, "Expected \"{\" at the start of the file", 0, 0, 0);
+        } else {
+            parser_error("Expected \"{\" but got", peek_tkn());
+        }
+        return NULL;
+    }
+
+    return NULL;
+
+    JsonObject *obj = parse_object();
+
+    lexer_cleanup();
 
     if(parser.had_errors) {
         return NULL;

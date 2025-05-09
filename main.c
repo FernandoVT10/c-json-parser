@@ -37,12 +37,7 @@ char* read_file(char *path) {
 
 int main() {
     char *buffer = read_file("./test.json");
-    lexer_init(buffer);
-    Tokens tokens = lexer_scan();
-    if(lexer_had_errors()) {
-        return 1;
-    }
-    JsonObject *obj = json_parse(tokens, buffer);
+    JsonObject *obj = json_parse(buffer);
     if(obj == NULL) {
         return 1;
     }
