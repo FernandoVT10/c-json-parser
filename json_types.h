@@ -52,6 +52,7 @@ void json_object_set(JsonObject *obj, char *key, JsonValue value);
 JsonObjectItem *json_object_get(JsonObject *obj, char *key);
 bool json_object_has(JsonObject *obj, char *key);
 JsonObject* json_object_new();
+void json_object_destroy(JsonObject *obj);
 void json_object_print(JsonObject *obj, int indent);
 
 JsonArray *json_array_new();

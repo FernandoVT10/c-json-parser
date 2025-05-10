@@ -5,8 +5,9 @@
 #include <errno.h>
 #include <stdbool.h>
 
-#include "lexer.h"
-#include "parser.h"
+#include "parser_internal.h"
+
+// #include "parser.h"
 
 FILE *open_file(const char *path) {
     FILE *file = fopen(path, "r");
@@ -37,13 +38,31 @@ char* read_file(char *path) {
 
 int main() {
     char *buffer = read_file("./test.json");
-    lexer_init(buffer);
-    Tokens tokens = lexer_scan();
-    if(lexer_had_errors()) {
+    Lexer lexer = {
+        .buffer = buffer,
+    };
+    lexer_init(&lexer);
+    lexer_scan(&lexer);
+
+    if(lexer.had_errors) {
+        lexer_destroy(&lexer);
         return 1;
     }
-    JsonObject *obj = json_parse(tokens);
+
+    Parser parser = {
+        .buffer = buffer,
+        .tokens = lexer.tokens,
+    };
+    JsonObject *obj = parser_parse_tokens(&parser);
+
+    if(parser.had_errors) {
+        lexer_destroy(&lexer);
+        return 1;
+    }
+
     json_object_print(obj, 0);
+
+    lexer_destroy(&lexer);
 
     return 0;
 }

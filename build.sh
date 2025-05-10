@@ -1,3 +1,3 @@
 #!/bin/sh
 
-gcc -Wall -Werror -o main main.c lexer.c cTooling.c parser.c json_types.c
+gcc -Wall -Werror -o main main.c lexer.c cTooling.c json_types.c diagnostics.c parser.c

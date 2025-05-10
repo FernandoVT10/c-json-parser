@@ -1,13 +1,9 @@
 {
-    "v1": 12,
-    "v2": "hello",
-    "v3": false,
-    "v4": true,
-    "v5": null,
-    "v6": [1, 2, [false, true], "bye bitches!", { "$-%bruh": "bruh" }],
-    "v7": {
-        "v7_1": "YEAH!"
+    "v1": 12e10,
+    "v2": "uwu",
+    "v3": {
+        "v3_1": "YEAH Baby!"
     },
-    "v8": 15.2,
-    "v9": 2.21e1
+    "v4": [false, true, {"v4_3_1": "STILL HERE!!!"}],
+    "v5": null
 }

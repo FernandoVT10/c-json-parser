@@ -59,6 +59,10 @@ JsonObject* json_object_new() {
     return obj;
 }
 
+void json_object_destroy(JsonObject *obj) {
+    free(obj);
+}
+
 void json_inner_object_print(JsonObject *obj, int indent) {
     JsonObjectItem *item = obj->head;
     printf("{\n");

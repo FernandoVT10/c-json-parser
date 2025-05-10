@@ -1,77 +1,114 @@
-#include <stdbool.h>
-#include <stdlib.h>
+#include <assert.h>
 #include <string.h>
+#include <stdlib.h>
 
-#include "parser.h"
+#include "parser_internal.h"
 
-JsonArray *parser_array();
-JsonObject *parser_object(bool test_first_brace);
+static JsonObject *object(Parser *parser);
+static JsonArray *array(Parser *parser);
 
-// FORMAL GRAMMAR
-// Object => "{" (ObjectItem ("," ObjectItem)*)? "}"
-// ObjectItem => Key ":" Value
-// Key => '"' [0-9A-Za-z]+ '"'
-// Value => "false" | "true" | "null" | Number | String | Array | Object
-// Number => [0-9]+
-// String => '"' [0-9A-Za-z]* '"'
-// Array => "[" (Value ("," Value)*)? "]"
-
-Parser parser = {0};
-
-bool parser_is_at_end() {
-    return parser.cursor >= parser.tokens.count;
+// Token manipulation functions
+static bool is_at_end(Parser *parser) {
+    return parser->current >= parser->tokens.count;
 }
 
-Token *parser_get_tkn(size_t pos) {
-    if(pos >= parser.tokens.count) {
-        return NULL;
-    }
-
-    return &parser.tokens.items[pos];
+static Token get_token(Parser *parser, int pos) {
+    assert(pos < parser->tokens.count && pos >= 0);
+    return parser->tokens.items[pos];
 }
 
-Token *parser_consume_tkn() {
-    return parser_get_tkn(parser.cursor++);
+static Token peek(Parser *parser) {
+    return get_token(parser, parser->current);
 }
 
-Token *parser_peek_tkn() {
-    return parser_get_tkn(parser.cursor);
+static Token prev(Parser *parser) {
+    return get_token(parser, parser->current - 1);
 }
 
-Token *parser_prev_tkn() {
-    if(parser.cursor > 0) {
-        return parser_get_tkn(parser.cursor - 1);
-    }
-
-    return NULL;
+static Token next(Parser *parser) {
+    return get_token(parser, parser->current++);
 }
 
-bool parser_match_tkn(TokenType type) {
-    Token *token = parser_peek_tkn();
-    if(token != NULL && token->type == type) {
-        parser_consume_tkn();
+// returns and advances if the tokens types match
+static bool match(Parser *parser, TokenType type) {
+    if(is_at_end(parser)) return false;
+
+    if(peek(parser).type == type) {
+        next(parser);
         return true;
     }
 
     return false;
 }
-bool parser_is_next_tkn(TokenType type) {
-    Token *t = parser_peek_tkn();
-    return t != NULL && t->type == type;
+
+static bool is_next(Parser *parser, TokenType type) {
+    if(is_at_end(parser)) return false;
+    return peek(parser).type == type;
 }
 
-bool parser_value(JsonValue *value) {
-    Token *t = parser_consume_tkn();
+static void rewind_tkn(Parser *parser) {
+    if(parser->current > 0) {
+        parser->current--;
+    }
+}
 
-    switch(t->type) {
+static void synchronize(Parser *parser) {
+    while(!is_at_end(parser)) {
+        Token t = peek(parser);
+        switch(t.type) {
+            case STRING_TKN:
+            case CLOSE_BRACE_TKN:
+            case CLOSE_BRACKET_TKN:
+                return;
+            default:
+                next(parser);
+        }
+    }
+}
+
+// Error functions
+
+// prints error marking the next token error as the cause
+// if there's no next token, a specific error is created
+static void error_at_next(Parser *parser, const char *msg) {
+    if(is_at_end(parser)) {
+        Token t = prev(parser);
+        print_range_error(msg, (ErrorSrc) {
+            .line = t.line,
+            .col = {t.col.end, t.col.end},
+            .src = parser->buffer,
+            .eof = true,
+        });
+    } else {
+        Token t = peek(parser);
+        print_range_error(msg, (ErrorSrc) {
+            .line = t.line,
+            .col = {t.col.start, t.col.end},
+            .src = parser->buffer,
+        });
+    }
+    parser->had_errors = true;
+}
+
+static void error_msg(Parser *parser, const char *msg) {
+    print_message_error(msg);
+    parser->had_errors = true;
+}
+
+
+// Parsing functions
+
+static bool value(Parser *parser, JsonValue *value) {
+    Token t = next(parser);
+
+    switch(t.type) {
         case STRING_TKN:
             value->type = JSON_STRING;
-            // TODO: is this ok?
-            value->ptr = strdup(t->lexeme);
+            value->ptr = strdup(t.lexeme);
             break;
         case NUMBER_TKN:
             value->type = JSON_NUMBER;
-            value->literal = strtod(t->lexeme, NULL);
+            value->literal = strtod(t.lexeme, NULL);
             break;
         case FALSE_TKN:
             value->type = JSON_BOOL;
@@ -86,102 +123,115 @@ bool parser_value(JsonValue *value) {
             break;
         case OPEN_BRACKET_TKN:
             value->type = JSON_ARRAY;
-            value->ptr = parser_array();
+            value->ptr = array(parser);
             break;
         case OPEN_BRACE_TKN:
             value->type = JSON_OBJECT;
-            value->ptr = parser_object(false);
+            value->ptr = object(parser);
             break;
         default:
-            printf("[ERROR] Expected value\n");
+            rewind_tkn(parser);
+            error_at_next(parser, "Expected value");
             return false;
     }
 
     return true;
 }
 
-JsonArray *parser_array() {
+static JsonArray *array(Parser *parser) {
     JsonArray *arr = json_array_new();
 
     bool first = true;
-    while(!parser_is_at_end() && !parser_is_next_tkn(CLOSE_BRACKET_TKN)) {
-        JsonValue value = {0};
+    while(!is_at_end(parser) && !is_next(parser, CLOSE_BRACKET_TKN)) {
+        JsonValue val = {0};
 
         if(first) {
-            if(!parser_value(&value)) break;
             first = false;
         } else {
-            if(!parser_match_tkn(COMMA_TKN)) {
-                printf("[ERROR] Expected \",\"\n");
+            if(!match(parser, COMMA_TKN)) {
+                error_at_next(parser, "Expected \",\"");
+                synchronize(parser);
                 break;
             }
-
-            if(!parser_value(&value)) break;
         }
 
-        json_array_push(arr, value);
+        if(!value(parser, &val)) {
+            synchronize(parser);
+            break;
+        }
+
+        json_array_push(arr, val);
     }
 
-    if(!parser_match_tkn(CLOSE_BRACKET_TKN)) {
-        printf("[ERROR] Expected \"]\"\n");
+    if(!match(parser, CLOSE_BRACKET_TKN)) {
+        error_at_next(parser, "Expected \"]\"");
     }
 
     return arr;
 }
 
-void parser_object_item(JsonObject *obj) {
-    if(!parser_is_next_tkn(STRING_TKN)) {
-        printf("[ERROR] Expected key\n");
-        return;
+static bool object_item(Parser *parser, JsonObject *obj) {
+    if(!is_next(parser, STRING_TKN)) {
+        error_at_next(parser, "Expected key");
+        return false;
     }
 
-    Token *key = parser_consume_tkn();
+    Token key = next(parser);
 
-    if(!parser_match_tkn(COLON_TKN)) {
-        printf("[ERROR] Expected \":\"\n");
-        return;
+    if(!match(parser, COLON_TKN)) {
+        error_at_next(parser, "Expected \":\"");
+        return false;
     }
 
-    JsonValue value = {0};
-    if(parser_value(&value)) {
-        json_object_set(obj, key->lexeme, value);
+    JsonValue val = {0};
+    if(value(parser, &val)) {
+        json_object_set(obj, key.lexeme, val);
+        return true;
     }
+
+    return false;
 }
 
-JsonObject *parser_object(bool test_first_brace) {
+static JsonObject *object(Parser *parser) {
     JsonObject *obj = json_object_new();
 
-    if(test_first_brace && !parser_match_tkn(OPEN_BRACE_TKN)) {
-        printf("[ERROR] Expected \"{\"\n");
-    }
-
     bool first = true;
-    while(!parser_is_next_tkn(CLOSE_BRACE_TKN) && !parser_is_at_end()) {
+    while(!is_at_end(parser) && !is_next(parser, CLOSE_BRACE_TKN)) {
         if(first) {
-            parser_object_item(obj);
             first = false;
         } else {
-            if(!parser_match_tkn(COMMA_TKN)) {
-                printf("[ERROR] Expected \",\"\n");
+            if(!match(parser, COMMA_TKN)) {
+                error_at_next(parser, "Expected \",\"");
+                synchronize(parser);
                 break;
             }
+        }
 
-            parser_object_item(obj);
+        if(!object_item(parser, obj)) {
+            synchronize(parser);
+            break;
         }
     }
 
-    if(!parser_match_tkn(CLOSE_BRACE_TKN)) {
-        printf("[ERROR] Expected \"}\"\n");
+    if(!match(parser, CLOSE_BRACE_TKN)) {
+        error_at_next(parser, "Expected \"}\"");
+        json_object_destroy(obj);
+        return NULL;
     }
 
     return obj;
 }
 
-JsonObject *json_parse(Tokens tokens) {
-    parser.tokens = tokens;
-    parser.cursor = 0;
+JsonObject *parser_parse_tokens(Parser *parser) {
+    if(parser->tokens.count == 0) {
+        error_msg(parser, "Expected \"{\" at the start of the file");
+        return NULL;
+    }
 
-    JsonObject *obj = parser_object(true);
+    if(!match(parser, OPEN_BRACE_TKN)) {
+        error_at_next(parser, "Expected \"{\"");
+        return NULL;
+    }
 
-    return obj;
+    return object(parser);
 }
