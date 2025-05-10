@@ -1,188 +1,142 @@
-#include <stdbool.h>
-#include <string.h>
-#include <ctype.h>
-#include <stdarg.h>
-
+#include "parser_internal.h"
 #include "cTooling.h"
-#include "lexer.h"
-#include "error.h"
+#include "ctype.h"
 
-Lexer lexer = {0};
-
-void lexer_init(char *buffer) {
-    bzero(&lexer, sizeof(Lexer));
-    lexer.line = 1;
-    lexer.buffer = buffer;
+// Buffer functions
+static bool is_at_end(Lexer *lexer) {
+    return lexer->buffer[lexer->current] == '\0';
 }
 
-static bool lexer_is_at_end() {
-    return lexer.cur_current >= strlen(lexer.buffer);
+static char next(Lexer *lexer) {
+    lexer->col.current++;
+    return lexer->buffer[lexer->current++];
 }
 
-static char lexer_advance() {
-    lexer.col_current++;
-    return lexer.buffer[lexer.cur_current++];
+static char peek(Lexer *lexer) {
+    return lexer->buffer[lexer->current];
 }
 
-static char lexer_peek() {
-    return lexer.buffer[lexer.cur_current];
-}
-
-static bool lexer_match(char c) {
-    if(lexer_peek() == c) {
-        lexer_advance();
+static bool match(Lexer *lexer, char c) {
+    if(peek(lexer) == c) {
+        next(lexer);
         return true;
     }
 
     return false;
 }
 
-static void lexer_add_tkn(TokenType type, char *lexeme) {
+// static char prev(Lexer *lexer) {
+//     assert(lexer->current > 0);
+//     return lexer->buffer[lexer->current - 1];
+// }
+
+// Tokens functions
+
+// prepares the lexer to add the next token
+static void begin_new_tkn(Lexer *lexer) {
+    lexer->col.start = lexer->col.current;
+    lexer->start = lexer->current;
+}
+
+static void add_tkn(Lexer *lexer, TokenType type, char *lexeme) {
     Token token = {
         .type = type,
         .lexeme = lexeme,
-        .start_col = lexer.col_start,
-        .end_col = lexer.col_current,
-        .line = lexer.line,
+        .col = {lexer->col.start, lexer->col.current},
+        .line = lexer->line,
     };
-    lexer.col_start = lexer.col_current;
-    lexer.cur_start = lexer.cur_current;
-    da_append(&lexer.tokens, token);
+    da_append(&lexer->tokens, token);
 }
 
-static void lexer_error(const char *message, int start_col, int end_col, int line) {
-    syntax_error(lexer.buffer, message, start_col, end_col, line);
-    lexer.had_errors = true;
+static void add_basic_tkn(Lexer *lexer, TokenType type) {
+    add_tkn(lexer, type, NULL);
 }
 
-static void lexer_string() {
-    while(!lexer_is_at_end() && lexer_peek() != '"' && lexer_peek() != '\n') {
-        lexer_advance();
+// Error functions
+// prints error at the lexer's line and marks the error as a range using lexer's col
+static void range_error(Lexer *lexer, const char *msg) {
+    print_range_error(msg, (ErrorRange){
+        .line = lexer->line,
+        .col = {lexer->col.start, lexer->col.current},
+        .src = lexer->buffer,
+    });
+}
+
+// Lexing functions
+
+static void string(Lexer *lexer) {
+    while(!is_at_end(lexer)) {
+        char c = peek(lexer);
+        if(c == '\n' || c == '"') break;
+        next(lexer);
     }
 
-    if(!lexer_match('"')) {
-        lexer_error("Expected terminating \"", lexer.col_start, lexer.col_current, lexer.line);
+    if(!match(lexer, '"')) {
+        range_error(lexer, "Expected terminating \"");
         return;
     }
 
-    char *str = strndup(
+    char *lexeme = strndup(
         // +1 to remove the preceding "
-        lexer.buffer + lexer.cur_start + 1,
+        lexer->buffer + lexer->start + 1,
         // -2 to remove the ending " and the added char above
-        lexer.cur_current - lexer.cur_start - 2
+        lexer->current - lexer->start - 2
     );
-    lexer_add_tkn(STRING_TKN, str);
+
+    add_tkn(lexer, STRING_TKN, lexeme);
 }
 
-static void lexer_number(char c) {
-    if(c == '-' && !isdigit(lexer_peek())) {
-        lexer_error("Expected digit after \"-\"", lexer.col_current - 1, lexer.col_current, lexer.line);
-        return;
-    }
+// static void number(Lexer *lexer) {
+//     if(prev(lexer) == '-' && !isdigit(peek(lexer))) {
+//         lexer_error("Expected digit after \"-\"", lexer.col_current - 1, lexer.col_current, lexer.line);
+//         return;
+//     }
+// }
 
-    while(!lexer_is_at_end() && isdigit(lexer_peek())) {
-        lexer_advance();
-    }
+// Public functions
 
-    if(lexer_match('.')) {
-        if(!isdigit(lexer_peek())) {
-            lexer_error("Expected digit after \".\"", lexer.col_current - 1, lexer.col_current, lexer.line);
-            return;
-        }
+bool lexer_scan(Lexer *lexer) {
+    while(!is_at_end(lexer)) {
+        begin_new_tkn(lexer);
 
-        while(!lexer_is_at_end() && isdigit(lexer_peek())) {
-            lexer_advance();
-        }
-    }
-
-    if(lexer_match('e')) {
-        if(!isdigit(lexer_peek())) {
-            lexer_error("Expected digit after \"e\"", lexer.col_current - 1, lexer.col_current, lexer.line);
-            return;
-        }
-
-        while(!lexer_is_at_end() && isdigit(lexer_peek())) {
-            lexer_advance();
-        }
-    }
-
-    char *number = strndup(lexer.buffer + lexer.cur_start, lexer.cur_current - lexer.cur_start);
-    lexer_add_tkn(NUMBER_TKN, number);
-}
-
-static void lexer_keyword(char c) {
-    while(!lexer_is_at_end() && isalpha(lexer_peek())) {
-        lexer_advance();
-    }
-
-    char *keyword = strndup(lexer.buffer + lexer.cur_start, lexer.cur_current - lexer.cur_start);
-
-    if(strcmp(keyword, "false") == 0) {
-        lexer_add_tkn(FALSE_TKN, NULL);
-    } else if(strcmp(keyword, "true") == 0) {
-        lexer_add_tkn(TRUE_TKN, NULL);
-    } else if(strcmp(keyword, "null") == 0) {
-        lexer_add_tkn(NULL_TKN, NULL);
-    } else {
-        const char *message = text_format("Unknown keyword \"%s\"", keyword);
-        lexer_error(message, lexer.col_start, lexer.col_current, lexer.line);
-    }
-
-    free(keyword);
-}
-
-Tokens lexer_scan() {
-    while(!lexer_is_at_end()) {
-        char c = lexer_advance();
+        char c = next(lexer);
 
         switch(c) {
-            case '"': lexer_string(); break;
-            case '{': lexer_add_tkn(OPEN_BRACE_TKN, NULL); break;
-            case '}': lexer_add_tkn(CLOSE_BRACE_TKN, NULL); break;
-            case ':': lexer_add_tkn(COLON_TKN, NULL); break;
-            case '[': lexer_add_tkn(OPEN_BRACKET_TKN, NULL); break;
-            case ']': lexer_add_tkn(CLOSE_BRACKET_TKN, NULL); break;
-            case ',': lexer_add_tkn(COMMA_TKN, NULL); break;
+            case '{': add_basic_tkn(lexer, OPEN_BRACE_TKN); break;
+            case '}': add_basic_tkn(lexer, CLOSE_BRACE_TKN); break;
+            case ':': add_basic_tkn(lexer, COLON_TKN); break;
+            case '[': add_basic_tkn(lexer, OPEN_BRACKET_TKN); break;
+            case ']': add_basic_tkn(lexer, CLOSE_BRACKET_TKN); break;
+            case ',': add_basic_tkn(lexer, COMMA_TKN); break;
+            case '"': string(lexer); break;
             case '\n':
-                // resets col_current and col_start when a new line is found
-                // to be able to tokenize the next chunk correctly
-                lexer.col_start = 0;
-                lexer.col_current = 0;
-                lexer.cur_start = lexer.cur_current;
-                lexer.line++;
+                lexer->line++;
+                lexer->col.start = lexer->col.current = 0;
                 break;
             case '\t':
             case ' ':
-                lexer.col_start = lexer.col_current;
-                lexer.cur_start = lexer.cur_current;
                 break;
             default: {
-                if(isalpha(c)) {
-                    lexer_keyword(c);
-                } else if(isdigit(c) || c == '-') {
-                    lexer_number(c);
-                } else {
-                    const char *msg = text_format("Unexpected character \"%c\"", c);
-                    lexer_error(msg, lexer.col_current - 1, lexer.col_current, lexer.line);
-                }
+                // if(isalpha(c)) {
+                //     lexer_keyword(c);
+                // }
+                // if(isdigit(c) || c == '-') {
+                //     number(lexer);
+                // } else {
+                //     return false;
+                // }
+                return false;
+                // else {
+                //     const char *msg = text_format("Unexpected character \"%c\"", c);
+                //     lexer_error(msg, lexer.col_current - 1, lexer.col_current, lexer.line);
+                // }
             }
         }
     }
 
-    return lexer.tokens;
+    return true;
 }
 
-bool lexer_had_errors() {
-    return lexer.had_errors;
-}
-
-void lexer_cleanup() {
-    for(size_t i = 0; i < lexer.tokens.count; i++) {
-        Token token = lexer.tokens.items[i];
-        if(token.type == STRING_TKN || token.type == NUMBER_TKN) {
-            free(token.lexeme);
-        }
-    }
-
-    da_free(&lexer.tokens);
+void lexer_init(Lexer *lexer) {
+    lexer->line = 1;
 }

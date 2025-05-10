@@ -227,7 +227,7 @@ JsonObject *json_parse(char *buffer) {
 
     if(!match_tkn(OPEN_BRACE_TKN)) {
         if(is_at_end()) {
-            syntax_error(parser.buffer, "Expected \"{\" at the start of the file", 0, 0, 0);
+            syntax_error(parser.buffer, "Expected \"{\" at end of the file", 0, 0, 0);
         } else {
             parser_error("Expected \"{\" but got", peek_tkn());
         }

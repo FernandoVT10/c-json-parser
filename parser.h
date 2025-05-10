@@ -1,7 +1,7 @@
 #ifndef PARSER_H
 #define PARSER_H
 
-#include "lexer.h"
+#include "parser_internal.h"
 #include "json_types.h"
 
 typedef struct {
