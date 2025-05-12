@@ -171,6 +171,7 @@ bool lexer_scan(Lexer *lexer) {
                 break;
             case '\t':
             case ' ':
+            case '\r':
                 break;
             default: {
                 if(isalpha(c)) {

@@ -215,7 +215,7 @@ static JsonObject *object(Parser *parser) {
 
     if(!match(parser, CLOSE_BRACE_TKN)) {
         error_at_next(parser, "Expected \"}\"");
-        json_object_destroy(obj);
+        json_object_free(obj);
         return NULL;
     }
 

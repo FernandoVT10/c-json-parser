@@ -1,4 +1,5 @@
 #include <stdbool.h>
+#include <string.h>
 
 #include "json_types.h"
 #include "stdlib.h"
@@ -59,7 +60,8 @@ JsonObject* json_object_new() {
     return obj;
 }
 
-void json_object_destroy(JsonObject *obj) {
+void json_object_free(JsonObject *obj) {
+    // TODO: free everything correctly
     free(obj);
 }
 
@@ -121,28 +123,13 @@ JsonArray *json_array_new() {
 }
 
 void json_array_push(JsonArray *arr, JsonValue value) {
-    JsonArrayItem *item = malloc(sizeof(JsonArrayItem));
-    item->value = value;
-    item->next = NULL;
-
-    if(arr->count > 0) {
-        arr->tail->next = item;
-    } else {
-        arr->head = item;
-    }
-
-    arr->tail = item;
-    arr->count++;
+    da_append(arr, value);
 }
 
 void json_array_print(JsonArray *arr, int indent) {
-    JsonArrayItem *item = arr->head;
     printf("[\n");
-    int i = 0;
-    while(item != NULL) {
-        json_print_value(text_format("[%d]", i), item->value, indent + 4);
-        i++;
-        item = item->next;
+    for(size_t i = 0; i < arr->count; i++) {
+        json_print_value(text_format("[%d]", i), arr->items[i], indent + 4);
     }
     print_indentation(indent);
     printf("]\n");

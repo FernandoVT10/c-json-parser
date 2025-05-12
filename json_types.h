@@ -39,24 +39,29 @@ typedef struct JsonArrayItem JsonArrayItem;
 
 struct JsonArrayItem {
     JsonValue value;
-    JsonArrayItem *next;
 };
 
 typedef struct {
-    JsonArrayItem *head;
-    JsonArrayItem *tail;
+    JsonValue *items;
+    size_t capacity;
     size_t count;
 } JsonArray;
+
+// JsonValue json_string(const char *str); // allocates memory for the string stored is the JsonValue
+// JsonValue json_number(double number);
+// JsonValue json_bool(bool val);
+// JsonValue json_null();
 
 void json_object_set(JsonObject *obj, char *key, JsonValue value);
 JsonObjectItem *json_object_get(JsonObject *obj, char *key);
 bool json_object_has(JsonObject *obj, char *key);
 JsonObject* json_object_new();
-void json_object_destroy(JsonObject *obj);
+void json_object_free(JsonObject *obj);
 void json_object_print(JsonObject *obj, int indent);
 
 JsonArray *json_array_new();
 void json_array_push(JsonArray *arr, JsonValue value);
 void json_array_print(JsonArray *arr, int indent);
+void json_array_free(JsonArray *arr);
 
 #endif // JSON_TYPES_H

@@ -7,8 +7,6 @@
 
 #include "parser_internal.h"
 
-// #include "parser.h"
-
 FILE *open_file(const char *path) {
     FILE *file = fopen(path, "r");
     if(file == NULL) {
@@ -37,7 +35,7 @@ char* read_file(char *path) {
 }
 
 int main() {
-    char *buffer = read_file("./test.json");
+    char *buffer = read_file("./test/5mb.json");
     Lexer lexer = {
         .buffer = buffer,
     };
@@ -53,14 +51,14 @@ int main() {
         .buffer = buffer,
         .tokens = lexer.tokens,
     };
-    JsonObject *obj = parser_parse_tokens(&parser);
+    parser_parse_tokens(&parser);
 
     if(parser.had_errors) {
         lexer_destroy(&lexer);
         return 1;
     }
 
-    json_object_print(obj, 0);
+    // json_object_print(obj, 0);
 
     lexer_destroy(&lexer);
 
