@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <stdbool.h>
 
+#include "arena.h"
 #include "json_types.h"
 
 typedef enum {
@@ -21,18 +22,22 @@ typedef struct {
     int end;
 } TokenCol;
 
-typedef struct {
+typedef struct Token Token;
+
+struct Token {
     TokenType type;
     char *lexeme;
 
     TokenCol col;
     int line;
-} Token;
+    Token *prev;
+    Token *next;
+};
 
 typedef struct {
-    Token *items;
+    Token *head;
+    Token *tail;
     size_t count;
-    size_t capacity;
 } Tokens;
 
 typedef struct {
@@ -49,6 +54,7 @@ typedef struct {
     } col;
 
     Tokens tokens;
+    Arena arena;
     bool had_errors;
 } Lexer;
 
@@ -63,7 +69,7 @@ typedef struct {
 } ErrorSrc;
 
 typedef struct {
-    int current; // current token
+    Token* current; // current token
     Tokens tokens;
     char *buffer;
     bool had_errors;
@@ -72,7 +78,7 @@ typedef struct {
 // Lexer
 void lexer_init(Lexer *lexer);
 bool lexer_scan(Lexer *lexer);
-void lexer_destroy(Lexer *lexer);
+void lexer_free(Lexer *lexer);
 
 // Diagnostics
 void print_range_error(const char *msg, ErrorSrc err);

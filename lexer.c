@@ -39,13 +39,23 @@ static void begin_new_tkn(Lexer *lexer) {
 }
 
 static void add_tkn(Lexer *lexer, TokenType type, char *lexeme) {
-    Token token = {
-        .type = type,
-        .lexeme = lexeme,
-        .col = {lexer->col.start, lexer->col.current},
-        .line = lexer->line,
-    };
-    da_append(&lexer->tokens, token);
+    Token *token = arena_alloc(&lexer->arena, sizeof(Token));
+    token->type = type;
+    token->lexeme = lexeme;
+    token->col = (TokenCol){lexer->col.start, lexer->col.current};
+    token->line = lexer->line;
+    token->prev = NULL;
+    token->next = NULL;
+
+    if(lexer->tokens.count > 0) {
+        lexer->tokens.tail->next = token;
+        token->prev = lexer->tokens.tail;
+    } else {
+        lexer->tokens.head = token;
+    }
+
+    lexer->tokens.tail = token;
+    lexer->tokens.count++;
 }
 
 static void add_basic_tkn(Lexer *lexer, TokenType type) {
@@ -72,6 +82,20 @@ static void error_at_current(Lexer *lexer, const char *msg) {
     lexer->had_errors = true;
 }
 
+// Other
+static char *allocate_lexeme(Lexer *lexer, int start, int end) {
+    int len = end - start + 1;
+    char *lexeme = arena_alloc(&lexer->arena, len);
+
+    memcpy(
+        lexeme,
+        lexer->buffer + start,
+        len
+    );
+    lexeme[len - 1] = '\0';
+    return lexeme;
+}
+
 // Lexing functions
 
 static void string(Lexer *lexer) {
@@ -86,11 +110,12 @@ static void string(Lexer *lexer) {
         return;
     }
 
-    char *lexeme = strndup(
+    char *lexeme = allocate_lexeme(
+        lexer,
         // +1 to remove the preceding "
-        lexer->buffer + lexer->start + 1,
-        // -2 to remove the ending " and the added char above
-        lexer->current - lexer->start - 2
+        lexer->start + 1,
+        // -1 to remove the ending "
+        lexer->current - 1
     );
 
     add_tkn(lexer, STRING_TKN, lexeme);
@@ -122,10 +147,7 @@ static void number(Lexer *lexer) {
         while(isdigit(peek(lexer))) next(lexer);
     }
 
-    char *lexeme = strndup(
-        lexer->buffer + lexer->start,
-        lexer->current - lexer->start
-    );
+    char *lexeme = allocate_lexeme(lexer, lexer->start, lexer->current);
 
     add_tkn(lexer, NUMBER_TKN, lexeme);
 }
@@ -193,13 +215,6 @@ void lexer_init(Lexer *lexer) {
     lexer->line = 1;
 }
 
-void lexer_destroy(Lexer *lexer) {
-    for(size_t i = 0; i < lexer->tokens.count; i++) {
-        Token token = lexer->tokens.items[i];
-        if(token.type == STRING_TKN || token.type == NUMBER_TKN) {
-            free(token.lexeme);
-        }
-    }
-
-    da_free(&lexer->tokens);
+void lexer_free(Lexer *lexer) {
+    arena_free(&lexer->arena);
 }

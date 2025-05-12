@@ -35,7 +35,7 @@ char* read_file(char *path) {
 }
 
 int main() {
-    char *buffer = read_file("./test/5mb.json");
+    char *buffer = read_file("./test/test.json");
     Lexer lexer = {
         .buffer = buffer,
     };
@@ -43,7 +43,7 @@ int main() {
     lexer_scan(&lexer);
 
     if(lexer.had_errors) {
-        lexer_destroy(&lexer);
+        lexer_free(&lexer);
         return 1;
     }
 
@@ -51,16 +51,16 @@ int main() {
         .buffer = buffer,
         .tokens = lexer.tokens,
     };
-    parser_parse_tokens(&parser);
+    JsonObject *obj = parser_parse_tokens(&parser);
 
     if(parser.had_errors) {
-        lexer_destroy(&lexer);
+        lexer_free(&lexer);
         return 1;
     }
 
-    // json_object_print(obj, 0);
+    json_object_print(obj, 0);
 
-    lexer_destroy(&lexer);
+    lexer_free(&lexer);
 
     return 0;
 }

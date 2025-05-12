@@ -9,31 +9,33 @@ static JsonArray *array(Parser *parser);
 
 // Token manipulation functions
 static bool is_at_end(Parser *parser) {
-    return parser->current >= parser->tokens.count;
+    return parser->current == NULL;
 }
 
-static Token get_token(Parser *parser, int pos) {
-    assert(pos < parser->tokens.count && pos >= 0);
-    return parser->tokens.items[pos];
+// static Token get_token(Parser *parser, int pos) {
+//     assert(pos < parser->tokens.count && pos >= 0);
+//     return parser->tokens.items[pos];
+// }
+
+static Token *peek(Parser *parser) {
+    return parser->current;
 }
 
-static Token peek(Parser *parser) {
-    return get_token(parser, parser->current);
+static Token *prev(Parser *parser) {
+    return parser->current->prev;
 }
 
-static Token prev(Parser *parser) {
-    return get_token(parser, parser->current - 1);
-}
-
-static Token next(Parser *parser) {
-    return get_token(parser, parser->current++);
+static Token *next(Parser *parser) {
+    Token *t = parser->current;
+    parser->current = parser->current->next;
+    return t;
 }
 
 // returns and advances if the tokens types match
 static bool match(Parser *parser, TokenType type) {
     if(is_at_end(parser)) return false;
 
-    if(peek(parser).type == type) {
+    if(peek(parser)->type == type) {
         next(parser);
         return true;
     }
@@ -43,19 +45,19 @@ static bool match(Parser *parser, TokenType type) {
 
 static bool is_next(Parser *parser, TokenType type) {
     if(is_at_end(parser)) return false;
-    return peek(parser).type == type;
+    return peek(parser)->type == type;
 }
 
 static void rewind_tkn(Parser *parser) {
-    if(parser->current > 0) {
-        parser->current--;
+    if(parser->current->prev != NULL) {
+        parser->current = parser->current->prev;
     }
 }
 
 static void synchronize(Parser *parser) {
     while(!is_at_end(parser)) {
-        Token t = peek(parser);
-        switch(t.type) {
+        Token *t = peek(parser);
+        switch(t->type) {
             case STRING_TKN:
             case CLOSE_BRACE_TKN:
             case CLOSE_BRACKET_TKN:
@@ -72,18 +74,18 @@ static void synchronize(Parser *parser) {
 // if there's no next token, a specific error is created
 static void error_at_next(Parser *parser, const char *msg) {
     if(is_at_end(parser)) {
-        Token t = prev(parser);
+        Token *t = prev(parser);
         print_range_error(msg, (ErrorSrc) {
-            .line = t.line,
-            .col = {t.col.end, t.col.end},
+            .line = t->line,
+            .col = {t->col.end, t->col.end},
             .src = parser->buffer,
             .eof = true,
         });
     } else {
-        Token t = peek(parser);
+        Token *t = peek(parser);
         print_range_error(msg, (ErrorSrc) {
-            .line = t.line,
-            .col = {t.col.start, t.col.end},
+            .line = t->line,
+            .col = {t->col.start, t->col.end},
             .src = parser->buffer,
         });
     }
@@ -99,16 +101,16 @@ static void error_msg(Parser *parser, const char *msg) {
 // Parsing functions
 
 static bool value(Parser *parser, JsonValue *value) {
-    Token t = next(parser);
+    Token *t = next(parser);
 
-    switch(t.type) {
+    switch(t->type) {
         case STRING_TKN:
             value->type = JSON_STRING;
-            value->ptr = strdup(t.lexeme);
+            value->ptr = strdup(t->lexeme);
             break;
         case NUMBER_TKN:
             value->type = JSON_NUMBER;
-            value->literal = strtod(t.lexeme, NULL);
+            value->literal = strtod(t->lexeme, NULL);
             break;
         case FALSE_TKN:
             value->type = JSON_BOOL;
@@ -176,7 +178,7 @@ static bool object_item(Parser *parser, JsonObject *obj) {
         return false;
     }
 
-    Token key = next(parser);
+    Token *key = next(parser);
 
     if(!match(parser, COLON_TKN)) {
         error_at_next(parser, "Expected \":\"");
@@ -185,7 +187,7 @@ static bool object_item(Parser *parser, JsonObject *obj) {
 
     JsonValue val = {0};
     if(value(parser, &val)) {
-        json_object_set(obj, key.lexeme, val);
+        json_object_set(obj, key->lexeme, val);
         return true;
     }
 
@@ -227,6 +229,8 @@ JsonObject *parser_parse_tokens(Parser *parser) {
         error_msg(parser, "Expected \"{\" at the start of the file");
         return NULL;
     }
+
+    parser->current = parser->tokens.head;
 
     if(!match(parser, OPEN_BRACE_TKN)) {
         error_at_next(parser, "Expected \"{\"");
