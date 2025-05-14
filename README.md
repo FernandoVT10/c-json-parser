@@ -6,7 +6,7 @@ This is a little library that parses json into useful `C` structs. There are a l
 
 This project also has a really good (at least in my opinion) error system.
 
-# Run
+## Run
 You need to have `gcc` installed and the run:
 ```console
 $ ./build.sh
