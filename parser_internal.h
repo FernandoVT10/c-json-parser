@@ -5,7 +5,7 @@
 #include <stdbool.h>
 
 #include "arena.h"
-#include "json_types.h"
+#include "json.h"
 
 typedef enum {
     STRING_TKN, NUMBER_TKN,
@@ -85,6 +85,6 @@ void print_range_error(const char *msg, ErrorSrc err);
 void print_message_error(const char *msg);
 
 // Parser
-JsonObject *parser_parse_tokens(Parser *parser);
+JsonValue parser_parse_tokens(Parser *parser);
 
 #endif // PARSER_INTERNAL_H

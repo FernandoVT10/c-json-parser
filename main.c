@@ -6,6 +6,7 @@
 #include <stdbool.h>
 
 #include "parser_internal.h"
+#include "json.h"
 
 FILE *open_file(const char *path) {
     FILE *file = fopen(path, "r");
@@ -36,31 +37,15 @@ char* read_file(char *path) {
 
 int main() {
     char *buffer = read_file("./test/test.json");
-    Lexer lexer = {
-        .buffer = buffer,
-    };
-    lexer_init(&lexer);
-    lexer_scan(&lexer);
 
-    if(lexer.had_errors) {
-        lexer_free(&lexer);
+    JsonValue val = json_parse_buffer(buffer);
+
+    if(json_is_null(val)) {
         return 1;
     }
 
-    Parser parser = {
-        .buffer = buffer,
-        .tokens = lexer.tokens,
-    };
-    JsonObject *obj = parser_parse_tokens(&parser);
-
-    if(parser.had_errors) {
-        lexer_free(&lexer);
-        return 1;
-    }
-
-    json_object_print(obj, 0);
-
-    lexer_free(&lexer);
+    json_print(val, 0);
+    json_free(val);
 
     return 0;
 }

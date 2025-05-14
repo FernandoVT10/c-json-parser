@@ -12,11 +12,6 @@ static bool is_at_end(Parser *parser) {
     return parser->current == NULL;
 }
 
-// static Token get_token(Parser *parser, int pos) {
-//     assert(pos < parser->tokens.count && pos >= 0);
-//     return parser->tokens.items[pos];
-// }
-
 static Token *peek(Parser *parser) {
     return parser->current;
 }
@@ -106,30 +101,30 @@ static bool value(Parser *parser, JsonValue *value) {
     switch(t->type) {
         case STRING_TKN:
             value->type = JSON_STRING;
-            value->ptr = strdup(t->lexeme);
+            value->str = strdup(t->lexeme);
             break;
         case NUMBER_TKN:
             value->type = JSON_NUMBER;
-            value->literal = strtod(t->lexeme, NULL);
+            value->number = strtod(t->lexeme, NULL);
             break;
         case FALSE_TKN:
             value->type = JSON_BOOL;
-            value->literal = 0;
+            value->boolean = false;
             break;
         case TRUE_TKN:
             value->type = JSON_BOOL;
-            value->literal = 1;
+            value->boolean = true;
             break;
         case NULL_TKN:
             value->type = JSON_NULL;
             break;
         case OPEN_BRACKET_TKN:
             value->type = JSON_ARRAY;
-            value->ptr = array(parser);
+            value->arr = array(parser);
             break;
         case OPEN_BRACE_TKN:
             value->type = JSON_OBJECT;
-            value->ptr = object(parser);
+            value->obj = object(parser);
             break;
         default:
             rewind_tkn(parser);
@@ -217,25 +212,24 @@ static JsonObject *object(Parser *parser) {
 
     if(!match(parser, CLOSE_BRACE_TKN)) {
         error_at_next(parser, "Expected \"}\"");
-        json_object_free(obj);
-        return NULL;
+        return obj;
     }
 
     return obj;
 }
 
-JsonObject *parser_parse_tokens(Parser *parser) {
+JsonValue parser_parse_tokens(Parser *parser) {
     if(parser->tokens.count == 0) {
         error_msg(parser, "Expected \"{\" at the start of the file");
-        return NULL;
+        return json_null();
     }
 
     parser->current = parser->tokens.head;
 
     if(!match(parser, OPEN_BRACE_TKN)) {
         error_at_next(parser, "Expected \"{\"");
-        return NULL;
+        return json_null();
     }
 
-    return object(parser);
+    return json_object(object(parser));
 }
